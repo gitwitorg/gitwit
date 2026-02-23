@@ -29,6 +29,7 @@ export default function EditorTerminal({
   const terminalContainerRef = useRef<ElementRef<"div">>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
 
+  // Run once on mount: create terminal, register terminalResponse before setTerm (avoid missing first prompt), then cleanup only on unmount
   useEffect(() => {
     if (!terminalContainerRef.current) return
 
@@ -83,17 +84,24 @@ export default function EditorTerminal({
       return true
     })
 
+    // Register terminalResponse before setTerm so we don't miss the initial prompt (same-window race)
+    const handleTerminalResponse = (response: { id: string; data: string }) => {
+      if (response.id === id) {
+        terminal.write(response.data)
+      }
+    }
+    socket.on("terminalResponse", handleTerminalResponse)
+
     setTerm(terminal)
 
     return () => {
-      // Don't dispose terminal on unmount - it may be reused after panel move
-      // Terminal disposal is handled explicitly in closeTerminal
+      socket.off("terminalResponse", handleTerminalResponse)
       terminalContainerRef.current?.removeEventListener(
         "contextmenu",
         handleContextMenu,
       )
     }
-  }, [term])
+  }, [])
 
   useEffect(() => {
     if (term) {
@@ -179,20 +187,6 @@ export default function EditorTerminal({
       resizeObserver.disconnect()
     }
   }, [term, terminalContainerRef.current])
-
-  useEffect(() => {
-    if (!term) return
-    const handleTerminalResponse = (response: { id: string; data: string }) => {
-      if (response.id === id) {
-        term.write(response.data)
-      }
-    }
-    socket.on("terminalResponse", handleTerminalResponse)
-
-    return () => {
-      socket.off("terminalResponse", handleTerminalResponse)
-    }
-  }, [term, id, socket])
 
   return (
     <>
