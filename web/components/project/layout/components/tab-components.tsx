@@ -117,35 +117,32 @@ export const tabComponents = {
     const { api } = props
     const terminalId = api.id.split("-")[1] // Extract terminal ID from panel ID
 
-    const { terminals, setTerminals, setActiveTerminalId } = useTerminal()
+    const { terminals, closeTerminal, setActiveTerminalId, isPreviewTerminal } =
+      useTerminal()
+    const isPreview = isPreviewTerminal(terminalId)
     const closeActionOverride = React.useCallback(() => {
-      // Find the terminal and dispose it
+      if (isPreview) return // Preview terminal can only be closed via Stop
       const terminal = terminals.find((t) => t.id === terminalId)
       if (terminal?.terminal) {
         terminal.terminal.dispose()
       }
 
-      setTerminals((prev) => prev.filter((t) => t.id !== terminalId))
-      setActiveTerminalId((prevActiveId) =>
-        prevActiveId === terminalId ? "" : prevActiveId,
-      )
       api.close()
-
-      // If the terminal grid panel will have no terminals after this close, hide it
       if (terminalRef.current?.panels.length === 1) {
         const terminalGridPanel = gridRef.current?.getPanel("terminal")
         if (terminalGridPanel) {
           terminalGridPanel.api.setVisible(false)
         }
       }
+      closeTerminal(terminalId)
     }, [
       api,
       terminalId,
       terminals,
-      setTerminals,
-      setActiveTerminalId,
+      closeTerminal,
       gridRef,
       terminalRef,
+      isPreview,
     ])
     return (
       <DockviewDefaultTab
@@ -153,6 +150,7 @@ export const tabComponents = {
         title="Shell"
         closeActionOverride={closeActionOverride}
         icon={<SquareTerminal className="size-3.5" />}
+        hideClose={isPreview}
       />
     )
   },

@@ -40,6 +40,27 @@ process.on("unhandledRejection", (reason, promise) => {
 
 // Initialize containers and managers
 const connections = new ConnectionManager()
+const projectCache = new Map<string, Project>()
+const projectCreationPromises = new Map<string, Promise<Project>>()
+
+async function getOrCreateProject(projectId: string): Promise<Project> {
+  let existing = projectCache.get(projectId)
+  if (existing) return existing
+  let promise = projectCreationPromises.get(projectId)
+  if (!promise) {
+    promise = (async () => {
+      let project = projectCache.get(projectId)
+      if (!project) {
+        project = new Project(projectId)
+        await project.initialize()
+        projectCache.set(projectId, project)
+      }
+      return project
+    })()
+    projectCreationPromises.set(projectId, promise)
+  }
+  return promise
+}
 
 // Initialize Express app and create HTTP server
 const app: Express = express()
@@ -107,9 +128,8 @@ io.on("connection", async (socket) => {
           })
       }
 
-      // Create or retrieve the project container for the given project ID
-      const project = new Project(data.projectId)
-      await project.initialize()
+      // Get or create project (serialized so concurrent connections share one project)
+      const project = await getOrCreateProject(data.projectId)
       await project.fileManager?.startWatching(sendFileNotifications)
 
       // Register event handlers for the project
@@ -124,6 +144,7 @@ io.on("connection", async (socket) => {
           dokkuClient,
           gitClient,
         },
+        connections,
       )
 
       // For each event handler, listen on the socket for that event
@@ -143,13 +164,17 @@ io.on("connection", async (socket) => {
       })
 
       socket.emit("ready")
+      // Initial terminal/preview state is sent when client emits getInitialState (avoids race with client listeners)
 
       // Handle disconnection event
       socket.on("disconnect", async () => {
         try {
-          // Deregister the connection
           connections.removeConnectionForProject(socket, data.projectId)
-          await project.killDevServers()
+          if (connections.connectionsForProject(data.projectId).size === 0) {
+            await project.disconnect()
+            projectCache.delete(data.projectId)
+            projectCreationPromises.delete(data.projectId)
+          }
         } catch (e: any) {
           handleErrors("Error disconnecting:", e, socket)
         }

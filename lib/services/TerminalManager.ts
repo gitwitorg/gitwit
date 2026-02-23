@@ -71,4 +71,8 @@ export class TerminalManager {
       }),
     )
   }
+
+  getTerminalIds(): string[] {
+    return Object.keys(this.terminals)
+  }
 }

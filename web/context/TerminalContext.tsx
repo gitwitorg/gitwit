@@ -4,6 +4,7 @@ import { useSocket } from "@/context/SocketContext"
 import {
   closeTerminal as closeTerminalHelper,
   createTerminal as createTerminalHelper,
+  stopPreview as stopPreviewApi,
 } from "@/lib/api/terminal"
 import { MAX_TERMINALS } from "@/lib/constants"
 import { Terminal } from "@xterm/xterm"
@@ -34,8 +35,11 @@ interface TerminalContextType {
   creatingTerminal: boolean
   setCreatingTerminal: React.Dispatch<React.SetStateAction<boolean>>
   closingTerminal: string
+  runTerminalId: string | null
   createNewTerminal: (command?: string) => Promise<string | null>
   closeTerminal: (id: string) => Promise<void>
+  stopPreview: () => void
+  isPreviewTerminal: (id: string) => boolean
   deploy: (callback: () => void) => void
   getAppExists:
     | ((appName: string) => Promise<{ success: boolean; exists?: boolean }>)
@@ -67,6 +71,52 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = ({
   const [activeTerminalId, setActiveTerminalId] = useState<string>("")
   const [creatingTerminal, setCreatingTerminal] = useState<boolean>(false)
   const [closingTerminal, setClosingTerminal] = useState<string>("")
+  const [runTerminalId, setRunTerminalId] = useState<string | null>(null)
+
+  // Synced from server: terminal list and preview state
+  useEffect(() => {
+    if (!socket) return
+    const onTerminalCreated = ({ id }: { id: string }) => {
+      setTerminals((prev) =>
+        prev.some((t) => t.id === id)
+          ? prev
+          : [...prev, { id, terminal: null, isBusy: false }],
+      )
+    }
+    const onTerminalClosed = ({ id }: { id: string }) => {
+      delete commandSentAtRef.current[id]
+      setTerminals((prev) => prev.filter((t) => t.id !== id))
+      setActiveTerminalId((prev) => (prev === id ? "" : prev))
+    }
+    const onTerminalState = ({ ids }: { ids: string[] }) => {
+      setTerminals((prev) => {
+        const existing = new Set(prev.map((t) => t.id))
+        const toAdd = ids
+          .filter((id) => !existing.has(id))
+          .map((id) => ({ id, terminal: null as Terminal | null, isBusy: false }))
+        return toAdd.length ? [...prev, ...toAdd] : prev
+      })
+    }
+    const onPreviewState = ({
+      url,
+      runTerminalId: rid,
+    }: {
+      url: string | null
+      runTerminalId: string | null
+    }) => {
+      setRunTerminalId(rid)
+    }
+    socket.on("terminalCreated", onTerminalCreated)
+    socket.on("terminalClosed", onTerminalClosed)
+    socket.on("terminalState", onTerminalState)
+    socket.on("previewState", onPreviewState)
+    return () => {
+      socket.off("terminalCreated", onTerminalCreated)
+      socket.off("terminalClosed", onTerminalClosed)
+      socket.off("terminalState", onTerminalState)
+      socket.off("previewState", onPreviewState)
+    }
+  }, [socket])
 
   // Track when commands were sent to ignore prompts that arrive too quickly
   // (the existing prompt before command runs)
@@ -119,6 +169,15 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = ({
   const terminalExists = useCallback(
     (id: string) => terminals.some((t) => t.id === id),
     [terminals],
+  )
+
+  const stopPreview = useCallback(() => {
+    if (socket) stopPreviewApi(socket)
+  }, [socket])
+
+  const isPreviewTerminal = useCallback(
+    (id: string) => runTerminalId === id,
+    [runTerminalId],
   )
 
   const sendCommandToTerminal = useCallback(
@@ -233,8 +292,11 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = ({
     creatingTerminal,
     setCreatingTerminal,
     closingTerminal,
+    runTerminalId,
     createNewTerminal,
     closeTerminal,
+    stopPreview,
+    isPreviewTerminal,
     deploy,
     getAppExists: isSocketReady ? getAppExists : null,
     isTerminalBusy,

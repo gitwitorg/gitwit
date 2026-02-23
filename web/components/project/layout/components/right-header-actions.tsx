@@ -35,8 +35,7 @@ export function TerminalRightHeaderActions(props: IDockviewHeaderActionsProps) {
     setIsCreating(true)
     createNewTerminal()
       .then((id) => {
-        // add terminal panel
-        group.panels.at(-1)
+        if (!id) return
         containerApi.addPanel({
           id: `terminal-${id}`,
           component: "terminal",

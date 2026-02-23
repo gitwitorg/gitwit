@@ -13,7 +13,7 @@ import {
   themeLight,
 } from "dockview"
 import { useTheme } from "next-themes"
-import { useCallback, useEffect, type FunctionComponent } from "react"
+import { useCallback, useEffect, useRef, type FunctionComponent } from "react"
 import { useEditorSocket } from "../hooks/useEditorSocket"
 import { ChatPanel } from "./components/chat-panel"
 import { EditorPanel } from "./components/editor-panel"
@@ -35,7 +35,8 @@ export function Dock(_props: DockProps) {
   const { resolvedTheme } = useTheme()
   const { gridRef, dockRef, terminalRef } = useEditor()
   const { isReady: isSocketReady } = useSocket()
-  const { creatingTerminal, createNewTerminal } = useTerminal()
+  const { terminals, creatingTerminal, createNewTerminal } = useTerminal()
+  const prevTerminalIdsRef = useRef<Set<string>>(new Set())
   const chatHandlers = useChatPanelHandlers()
 
   useEditorSocket()
@@ -180,6 +181,55 @@ export function Dock(_props: DockProps) {
       }
     }
   }, [isSocketReady])
+
+  // When we have synced terminals (from another window), show terminal panel and add dock panels so tabs appear
+  useEffect(() => {
+    if (terminals.length === 0 || !gridRef.current) return
+    const terminalGridPanel = gridRef.current.getPanel("terminal")
+    if (terminalGridPanel && !terminalGridPanel.api.isVisible) {
+      terminalGridPanel.api.setVisible(true)
+    }
+    const addPanels = () => {
+      const ref = terminalRef.current
+      if (!ref || !dockRef.current) return
+      terminals.forEach((term) => {
+        if (!ref.getPanel(`terminal-${term.id}`)) {
+          ref.addPanel({
+            id: `terminal-${term.id}`,
+            component: "terminal",
+            title: "Shell",
+            tabComponent: "terminal",
+          })
+        }
+      })
+    }
+    if (terminalRef.current && dockRef.current) {
+      addPanels()
+    } else {
+      const t = setTimeout(addPanels, 150)
+      return () => clearTimeout(t)
+    }
+  }, [terminals, gridRef, terminalRef, dockRef])
+
+  // When a terminal is removed (e.g. terminalClosed from server), close its dock panel so tabs stay in sync
+  useEffect(() => {
+    const ref = terminalRef.current
+    if (!ref) return
+    const currentIds = new Set(terminals.map((t) => t.id))
+    prevTerminalIdsRef.current.forEach((id) => {
+      if (!currentIds.has(id)) {
+        ref.getPanel(`terminal-${id}`)?.api.close()
+      }
+    })
+    prevTerminalIdsRef.current = currentIds
+    if (terminals.length === 0 && gridRef.current) {
+      const terminalGridPanel = gridRef.current.getPanel("terminal")
+      if (terminalGridPanel?.api.isVisible) {
+        terminalGridPanel.api.setVisible(false)
+      }
+    }
+  }, [terminals, terminalRef, gridRef])
+
   return (
     <div className="max-h-full overflow-hidden w-full h-full">
       <GridviewReact
