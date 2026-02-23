@@ -169,7 +169,9 @@ export const createProjectHandlers = (
   // Send initial synced state to the requesting client (called when client receives "ready" to avoid race with listener setup)
   const handleGetInitialState: SocketHandler = () => {
     const ids = project.terminalManager?.getTerminalIds() ?? []
-    connection.socket.emit("terminalState", { ids })
+    const screens =
+      project.terminalManager?.getScreenBuffers?.() ?? undefined
+    connection.socket.emit("terminalState", { ids, screens })
     connection.socket.emit("previewState", {
       url: project.previewURL,
       runTerminalId: project.runTerminalId,

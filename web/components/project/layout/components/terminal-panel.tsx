@@ -57,6 +57,7 @@ export function TerminalPanel(props: IDockviewPanelProps<TerminalPanelParams>) {
       }}
       visible
       isActive={isActive}
+      initialScreen={term.initialScreen}
     />
   )
 }

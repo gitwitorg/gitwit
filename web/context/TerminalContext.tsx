@@ -25,6 +25,8 @@ interface TerminalState {
   id: string
   terminal: Terminal | null
   isBusy: boolean
+  /** Cached screen from server for newly opened windows */
+  initialScreen?: string
 }
 
 interface TerminalContextType {
@@ -88,12 +90,23 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = ({
       setTerminals((prev) => prev.filter((t) => t.id !== id))
       setActiveTerminalId((prev) => (prev === id ? "" : prev))
     }
-    const onTerminalState = ({ ids }: { ids: string[] }) => {
+    const onTerminalState = ({
+      ids,
+      screens,
+    }: {
+      ids: string[]
+      screens?: Record<string, string>
+    }) => {
       setTerminals((prev) => {
         const existing = new Set(prev.map((t) => t.id))
         const toAdd = ids
           .filter((id) => !existing.has(id))
-          .map((id) => ({ id, terminal: null as Terminal | null, isBusy: false }))
+          .map((id) => ({
+            id,
+            terminal: null as Terminal | null,
+            isBusy: false,
+            initialScreen: screens?.[id],
+          }))
         return toAdd.length ? [...prev, ...toAdd] : prev
       })
     }

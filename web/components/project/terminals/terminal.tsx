@@ -17,6 +17,7 @@ export default function EditorTerminal({
   setTerm,
   visible,
   isActive = false,
+  initialScreen,
 }: {
   socket: Socket
   id: string
@@ -24,10 +25,12 @@ export default function EditorTerminal({
   setTerm: (term: Terminal) => void
   visible: boolean
   isActive?: boolean
+  initialScreen?: string
 }) {
   const { resolvedTheme: theme } = useTheme()
   const terminalContainerRef = useRef<ElementRef<"div">>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
+  const hasWrittenInitialScreenRef = useRef(false)
 
   // Run once on mount: create terminal, register terminalResponse before setTerm (avoid missing first prompt), then cleanup only on unmount
   useEffect(() => {
@@ -126,6 +129,13 @@ export default function EditorTerminal({
       term.open(terminalContainerRef.current)
       fitAddon.fit()
       fitAddonRef.current = fitAddon
+      if (
+        initialScreen &&
+        !hasWrittenInitialScreenRef.current
+      ) {
+        term.write(initialScreen)
+        hasWrittenInitialScreenRef.current = true
+      }
     } else {
       // Terminal already opened - reattach to new container
       const terminalElement = term.element
