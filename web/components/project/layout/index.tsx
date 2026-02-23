@@ -37,6 +37,7 @@ export function Dock(_props: DockProps) {
   const { isReady: isSocketReady } = useSocket()
   const { terminals, creatingTerminal, createNewTerminal } = useTerminal()
   const prevTerminalIdsRef = useRef<Set<string>>(new Set())
+  const hasAttemptedInitialCreateRef = useRef(false)
   const chatHandlers = useChatPanelHandlers()
 
   useEditorSocket()
@@ -162,25 +163,26 @@ export function Dock(_props: DockProps) {
     }
   }, [resolvedTheme, gridRef])
 
+  // Create one terminal on first load only if project has none (once per session; don't auto-create after user closes last tab)
   useEffect(() => {
-    if (!isSocketReady) return
-    // create terminal on load if none exist
-    if (!creatingTerminal && terminalRef.current) {
-      const existingTerminals = terminalRef.current.panels.length
-      if (existingTerminals === 0) {
-        createNewTerminal().then((id) => {
-          if (!id) return
-          // add terminal panel
-          terminalRef.current?.addPanel({
-            id: `terminal-${id}`,
-            component: "terminal",
-            title: "Shell",
-            tabComponent: "terminal",
-          })
+    if (!isSocketReady || hasAttemptedInitialCreateRef.current) return
+    const t = setTimeout(() => {
+      hasAttemptedInitialCreateRef.current = true
+      if (creatingTerminal || terminals.length > 0) return
+      if (!terminalRef.current) return
+      if (terminalRef.current.panels.length > 0) return
+      createNewTerminal().then((id) => {
+        if (!id) return
+        terminalRef.current?.addPanel({
+          id: `terminal-${id}`,
+          component: "terminal",
+          title: "Shell",
+          tabComponent: "terminal",
         })
-      }
-    }
-  }, [isSocketReady])
+      })
+    }, 400)
+    return () => clearTimeout(t)
+  }, [isSocketReady, terminals.length, creatingTerminal])
 
   // When we have synced terminals (from another window), show terminal panel and add dock panels so tabs appear
   useEffect(() => {
