@@ -16,12 +16,14 @@ export default function EditorTerminal({
   term,
   setTerm,
   visible,
+  isActive = false,
 }: {
   socket: Socket
   id: string
   term: Terminal | null
   setTerm: (term: Terminal) => void
   visible: boolean
+  isActive?: boolean
 }) {
   const { resolvedTheme: theme } = useTheme()
   const terminalContainerRef = useRef<ElementRef<"div">>(null)
@@ -98,6 +100,13 @@ export default function EditorTerminal({
       term.options.theme = theme === "light" ? lightTheme : darkTheme
     }
   }, [theme])
+
+  // When this terminal becomes the active panel, fit and send resize so server PTY matches
+  useEffect(() => {
+    if (isActive && fitAddonRef.current) {
+      fitAddonRef.current.fit()
+    }
+  }, [isActive])
 
   useEffect(() => {
     if (!term) return
