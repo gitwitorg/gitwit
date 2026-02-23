@@ -37,13 +37,11 @@ export class TerminalManager {
     console.log("Created terminal", id)
   }
 
-  async resizeTerminal(dimensions: {
-    cols: number
-    rows: number
-  }): Promise<void> {
-    Object.values(this.terminals).forEach((t) => {
-      t.resize(dimensions)
-    })
+  async resizeTerminal(
+    id: string,
+    dimensions: { cols: number; rows: number },
+  ): Promise<void> {
+    this.terminals[id]?.resize(dimensions)
   }
 
   async sendTerminalData(id: string, data: string): Promise<void> {

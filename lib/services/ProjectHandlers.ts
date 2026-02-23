@@ -130,13 +130,15 @@ export const createProjectHandlers = (
     })
   }
 
-  // Handle resizing a terminal
+  // Handle resizing a terminal (per-terminal dimensions)
   const handleResizeTerminal: SocketHandler = ({
+    id,
     dimensions,
   }: {
+    id: string
     dimensions: { cols: number; rows: number }
   }) => {
-    project.terminalManager?.resizeTerminal(dimensions)
+    project.terminalManager?.resizeTerminal(id, dimensions)
   }
 
   // Handle sending data to a terminal

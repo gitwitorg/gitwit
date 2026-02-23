@@ -131,7 +131,7 @@ export default function EditorTerminal({
 
     const disposableOnResize = term.onResize((dimensions) => {
       fitAddonRef.current?.fit()
-      socket.emit("resizeTerminal", { dimensions })
+      socket.emit("resizeTerminal", { id, dimensions })
     })
     const resizeObserver = new ResizeObserver(
       debounce((entries) => {
