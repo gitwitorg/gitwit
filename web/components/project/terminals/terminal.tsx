@@ -142,6 +142,13 @@ export default function EditorTerminal({
       fitAddonRef.current?.fit()
       socket.emit("resizeTerminal", { id, dimensions })
     })
+
+    const handleFocus = () => {
+      fitAddonRef.current?.fit()
+    }
+    const el = term.element
+    el?.addEventListener("focus", handleFocus)
+
     const resizeObserver = new ResizeObserver(
       debounce((entries) => {
         if (!fitAddonRef.current || !terminalContainerRef.current) return
@@ -166,6 +173,7 @@ export default function EditorTerminal({
 
     resizeObserver.observe(terminalContainerRef.current)
     return () => {
+      el?.removeEventListener("focus", handleFocus)
       disposableOnData.dispose()
       disposableOnResize.dispose()
       resizeObserver.disconnect()
