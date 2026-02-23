@@ -166,15 +166,10 @@ io.on("connection", async (socket) => {
       socket.emit("ready")
       // Initial terminal/preview state is sent when client emits getInitialState (avoids race with client listeners)
 
-      // Handle disconnection event
+      // Handle disconnection event (project and terminals stay in cache so next window sees same state)
       socket.on("disconnect", async () => {
         try {
           connections.removeConnectionForProject(socket, data.projectId)
-          if (connections.connectionsForProject(data.projectId).size === 0) {
-            await project.disconnect()
-            projectCache.delete(data.projectId)
-            projectCreationPromises.delete(data.projectId)
-          }
         } catch (e: any) {
           handleErrors("Error disconnecting:", e, socket)
         }
