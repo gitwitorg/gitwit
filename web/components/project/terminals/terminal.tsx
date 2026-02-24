@@ -31,6 +31,7 @@ export default function EditorTerminal({
   const terminalContainerRef = useRef<ElementRef<"div">>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const hasWrittenInitialScreenRef = useRef(false)
+  const fitAndNotifyRef = useRef<(() => void) | null>(null)
 
   // Run once on mount: create terminal, register terminalResponse before setTerm (avoid missing first prompt), then cleanup only on unmount
   useEffect(() => {
@@ -114,9 +115,7 @@ export default function EditorTerminal({
 
   // When this terminal becomes the active panel, fit and send resize so server PTY matches
   useEffect(() => {
-    if (isActive && fitAddonRef.current) {
-      fitAddonRef.current.fit()
-    }
+    if (isActive) fitAndNotifyRef.current?.()
   }, [isActive])
 
   useEffect(() => {
@@ -145,10 +144,7 @@ export default function EditorTerminal({
       ) {
         // Move the terminal DOM element to the new container
         terminalContainerRef.current.appendChild(terminalElement)
-        // Refit after reattachment
-        setTimeout(() => {
-          fitAddonRef.current?.fit()
-        }, 10)
+        setTimeout(() => fitAndNotifyRef.current?.(), 10)
       }
     }
 
@@ -156,41 +152,34 @@ export default function EditorTerminal({
       socket.emit("terminalData", { id, data })
     })
 
-    const disposableOnResize = term.onResize((dimensions) => {
-      fitAddonRef.current?.fit()
-      socket.emit("resizeTerminal", { id, dimensions })
-    })
-
-    const handleFocus = () => {
-      fitAddonRef.current?.fit()
+    const fitAndNotify = () => {
+      if (!fitAddonRef.current) return
+      try {
+        fitAddonRef.current.fit()
+        socket.emit("resizeTerminal", {
+          id,
+          dimensions: { cols: term.cols, rows: term.rows },
+        })
+      } catch (err) {
+        console.error("Error during fit:", err)
+      }
     }
+    fitAndNotifyRef.current = fitAndNotify
+
+    const disposableOnResize = term.onResize(() => fitAndNotify())
+    const handleFocus = () => fitAndNotify()
     const el = term.element
     el?.addEventListener("focus", handleFocus)
 
     const resizeObserver = new ResizeObserver(
-      debounce((entries) => {
-        if (!fitAddonRef.current || !terminalContainerRef.current) return
-
-        const entry = entries[0]
-        if (!entry) return
-
-        const { width, height } = entry.contentRect
-
-        if (
-          width !== terminalContainerRef.current.offsetWidth ||
-          height !== terminalContainerRef.current.offsetHeight
-        ) {
-          try {
-            fitAddonRef.current.fit()
-          } catch (err) {
-            console.error("Error during fit:", err)
-          }
-        }
+      debounce(() => {
+        if (fitAddonRef.current && terminalContainerRef.current) fitAndNotify()
       }, 50),
     )
 
     resizeObserver.observe(terminalContainerRef.current)
     return () => {
+      fitAndNotifyRef.current = null
       el?.removeEventListener("focus", handleFocus)
       disposableOnData.dispose()
       disposableOnResize.dispose()
