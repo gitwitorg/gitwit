@@ -156,26 +156,29 @@ export default function EditorTerminal({
       if (!fitAddonRef.current) return
       try {
         fitAddonRef.current.fit()
-        socket.emit("resizeTerminal", {
-          id,
-          dimensions: { cols: term.cols, rows: term.rows },
-        })
+        notifyResizeDebounced()
       } catch (err) {
         console.error("Error during fit:", err)
       }
     }
+    const notifyResizeDebounced = debounce(() => {
+      socket.emit("resizeTerminal", {
+        id,
+        dimensions: { cols: term.cols, rows: term.rows },
+      })
+    }, 50)
+    const fitAndNotifyDebounced = debounce(fitAndNotify, 50)
     fitAndNotifyRef.current = fitAndNotify
 
-    const disposableOnResize = term.onResize(() => fitAndNotify())
+    const disposableOnResize = term.onResize(() => notifyResizeDebounced())
     const handleFocus = () => fitAndNotify()
     const el = term.element
     el?.addEventListener("focus", handleFocus)
 
-    const resizeObserver = new ResizeObserver(
-      debounce(() => {
-        if (fitAddonRef.current && terminalContainerRef.current) fitAndNotify()
-      }, 50),
-    )
+    const resizeObserver = new ResizeObserver(() => {
+      if (fitAddonRef.current && terminalContainerRef.current)
+        fitAndNotifyDebounced()
+    })
 
     resizeObserver.observe(terminalContainerRef.current)
     return () => {
