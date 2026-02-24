@@ -47,9 +47,11 @@ export function useGlobalShortcut() {
           createNewTerminal().then((id) => {
             if (!id) return
             const ref = terminalRef.current
-            if (ref?.getPanel(`terminal-${id}`)) return
+            const dock = dockRef.current
+            const panelId = `terminal-${id}`
+            if (ref?.getPanel(panelId) || dock?.getPanel(panelId)) return
             ref?.addPanel({
-              id: `terminal-${id}`,
+              id: panelId,
               component: "terminal",
               title: "Shell",
               tabComponent: "terminal",
@@ -100,6 +102,7 @@ export function enableEditorShortcuts({
   monaco,
   gridRef,
   terminalRef,
+  dockRef,
   createNewTerminal,
   isCreatingTerminal,
   saveFile,
@@ -107,6 +110,7 @@ export function enableEditorShortcuts({
   monaco: editor.IStandaloneCodeEditor
   gridRef: MutableRefObject<GridviewApi | undefined>
   terminalRef: MutableRefObject<DockviewApi | undefined>
+  dockRef: MutableRefObject<DockviewApi | null | undefined>
   createNewTerminal: () => Promise<string | null>
   isCreatingTerminal: boolean
   saveFile: () => void
@@ -143,9 +147,11 @@ export function enableEditorShortcuts({
       createNewTerminal().then((id) => {
         if (!id) return
         const ref = terminalRef.current
-        if (ref?.getPanel(`terminal-${id}`)) return
+        const dock = dockRef.current
+        const panelId = `terminal-${id}`
+        if (ref?.getPanel(panelId) || dock?.getPanel(panelId)) return
         ref?.addPanel({
-          id: `terminal-${id}`,
+          id: panelId,
           component: "terminal",
           title: "Shell",
           tabComponent: "terminal",

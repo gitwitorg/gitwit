@@ -173,9 +173,11 @@ export function Dock(_props: DockProps) {
       createNewTerminal().then((id) => {
         if (!id) return
         const ref = terminalRef.current
-        if (ref?.getPanel(`terminal-${id}`)) return
+        const dock = dockRef.current
+        const panelId = `terminal-${id}`
+        if (ref?.getPanel(panelId) || dock?.getPanel(panelId)) return
         ref?.addPanel({
-          id: `terminal-${id}`,
+          id: panelId,
           component: "terminal",
           title: "Shell",
           tabComponent: "terminal",
@@ -228,14 +230,17 @@ export function Dock(_props: DockProps) {
     }
   }, [terminals, gridRef, terminalRef, dockRef])
 
-  // When a terminal is removed (e.g. terminalClosed from server), close its dock panel so tabs stay in sync
+  // When a terminal is removed (e.g. terminalClosed from server), close its panel in both containers so tabs stay in sync
   useEffect(() => {
     const ref = terminalRef.current
+    const dock = dockRef.current
     if (!ref) return
     const currentIds = new Set(terminals.map((t) => t.id))
     prevTerminalIdsRef.current.forEach((id) => {
       if (!currentIds.has(id)) {
-        ref.getPanel(`terminal-${id}`)?.api.close()
+        const panelId = `terminal-${id}`
+        ref.getPanel(panelId)?.api.close()
+        dock?.getPanel(panelId)?.api.close()
       }
     })
     prevTerminalIdsRef.current = currentIds
@@ -245,7 +250,7 @@ export function Dock(_props: DockProps) {
         terminalGridPanel.api.setVisible(false)
       }
     }
-  }, [terminals, terminalRef, gridRef])
+  }, [terminals, terminalRef, dockRef, gridRef])
 
   return (
     <div className="max-h-full overflow-hidden w-full h-full">
