@@ -30,7 +30,9 @@ export function useToggleTerminal() {
       if (!existingTerminals && !creatingTerminal) {
         createNewTerminal().then((id) => {
           if (!id) return
-          terminalRef.current?.addPanel({
+          const ref = terminalRef.current
+          if (ref?.getPanel(`terminal-${id}`)) return
+          ref?.addPanel({
             id: `terminal-${id}`,
             component: "terminal",
             title: "Shell",

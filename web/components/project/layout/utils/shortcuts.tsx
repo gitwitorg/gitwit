@@ -46,7 +46,9 @@ export function useGlobalShortcut() {
         if (!creatingTerminal) {
           createNewTerminal().then((id) => {
             if (!id) return
-            terminalRef.current?.addPanel({
+            const ref = terminalRef.current
+            if (ref?.getPanel(`terminal-${id}`)) return
+            ref?.addPanel({
               id: `terminal-${id}`,
               component: "terminal",
               title: "Shell",
@@ -140,8 +142,9 @@ export function enableEditorShortcuts({
     if (!isCreatingTerminal) {
       createNewTerminal().then((id) => {
         if (!id) return
-        // add terminal panel
-        terminalRef.current?.addPanel({
+        const ref = terminalRef.current
+        if (ref?.getPanel(`terminal-${id}`)) return
+        ref?.addPanel({
           id: `terminal-${id}`,
           component: "terminal",
           title: "Shell",

@@ -173,7 +173,9 @@ export function Dock(_props: DockProps) {
       if (terminalRef.current.panels.length > 0) return
       createNewTerminal().then((id) => {
         if (!id) return
-        terminalRef.current?.addPanel({
+        const ref = terminalRef.current
+        if (ref?.getPanel(`terminal-${id}`)) return
+        ref?.addPanel({
           id: `terminal-${id}`,
           component: "terminal",
           title: "Shell",

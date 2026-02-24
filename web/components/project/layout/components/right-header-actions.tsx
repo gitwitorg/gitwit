@@ -36,6 +36,7 @@ export function TerminalRightHeaderActions(props: IDockviewHeaderActionsProps) {
     createNewTerminal()
       .then((id) => {
         if (!id) return
+        if (containerApi.getPanel(`terminal-${id}`)) return
         containerApi.addPanel({
           id: `terminal-${id}`,
           component: "terminal",
