@@ -62,13 +62,12 @@ export function Dock(_props: DockProps) {
       })
 
       if (result.handled) {
-        // If terminal container is now empty, hide the terminal grid panel
-        if (terminalRef.current?.panels.length === 0) {
-          const terminalGridPanel = gridRef.current?.getPanel("terminal")
-          if (terminalGridPanel) {
-            terminalGridPanel.api.setVisible(false)
+        // Terminal was moved from terminal dock to somewhere else → hide terminal dock when empty
+        queueMicrotask(() => {
+          if (terminalRef.current?.panels.length === 0) {
+            gridRef.current?.getPanel("terminal")?.api.setVisible(false)
           }
-        }
+        })
       }
     },
     [terminalRef, dockRef, gridRef],
@@ -186,20 +185,30 @@ export function Dock(_props: DockProps) {
     return () => clearTimeout(t)
   }, [isSocketReady, terminals.length, creatingTerminal])
 
-  // When we have synced terminals (from another window), show terminal panel and add dock panels so tabs appear
+  // When we have synced terminals (from another window), show terminal panel and add dock panels so tabs appear. Don't show the strip if all terminals are in the main dock (user moved them).
   useEffect(() => {
     if (terminals.length === 0 || !gridRef.current) return
-    const terminalGridPanel = gridRef.current.getPanel("terminal")
-    if (terminalGridPanel && !terminalGridPanel.api.isVisible) {
-      terminalGridPanel.api.setVisible(true)
+    const ref = terminalRef.current
+    const dock = dockRef.current
+    const maybeShowTerminalStrip = () => {
+      const hasPanelsInTerminalDock = (terminalRef.current?.panels.length ?? 0) > 0
+      const allInMainDock = terminals.every(
+        (t) => dockRef.current?.getPanel(`terminal-${t.id}`) != null,
+      )
+      const terminalGridPanel = gridRef.current?.getPanel("terminal")
+      if (
+        terminalGridPanel &&
+        !terminalGridPanel.api.isVisible &&
+        hasPanelsInTerminalDock &&
+        !allInMainDock
+      ) {
+        terminalGridPanel.api.setVisible(true)
+      }
     }
     const addPanels = () => {
-      const ref = terminalRef.current
-      const dock = dockRef.current
       if (!ref || !dock) return
       terminals.forEach((term) => {
         const id = `terminal-${term.id}`
-        // Don't add if already in terminal container or if user moved it to the dock
         if (!ref.getPanel(id) && !dock.getPanel(id)) {
           ref.addPanel({
             id,
@@ -209,8 +218,9 @@ export function Dock(_props: DockProps) {
           })
         }
       })
+      maybeShowTerminalStrip()
     }
-    if (terminalRef.current && dockRef.current) {
+    if (ref && dock) {
       addPanels()
     } else {
       const t = setTimeout(addPanels, 150)
