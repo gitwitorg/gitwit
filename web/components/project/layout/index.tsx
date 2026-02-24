@@ -195,11 +195,14 @@ export function Dock(_props: DockProps) {
     }
     const addPanels = () => {
       const ref = terminalRef.current
-      if (!ref || !dockRef.current) return
+      const dock = dockRef.current
+      if (!ref || !dock) return
       terminals.forEach((term) => {
-        if (!ref.getPanel(`terminal-${term.id}`)) {
+        const id = `terminal-${term.id}`
+        // Don't add if already in terminal container or if user moved it to the dock
+        if (!ref.getPanel(id) && !dock.getPanel(id)) {
           ref.addPanel({
-            id: `terminal-${term.id}`,
+            id,
             component: "terminal",
             title: "Shell",
             tabComponent: "terminal",
