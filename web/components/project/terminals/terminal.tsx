@@ -33,14 +33,22 @@ export default function EditorTerminal({
   const hasWrittenInitialScreenRef = useRef(false)
   const fitAndNotifyRef = useRef<(() => void) | null>(null)
 
-  // Run once on mount: create terminal, register terminalResponse before setTerm (avoid missing first prompt), then cleanup only on unmount
+  // Always listen for terminal output (needed for both new terminals and after panel move)
+  useEffect(() => {
+    if (!term) return
+    const handleTerminalResponse = (response: { id: string; data: string }) => {
+      if (response.id === id) term.write(response.data)
+    }
+    socket.on("terminalResponse", handleTerminalResponse)
+    return () => {
+      socket.off("terminalResponse", handleTerminalResponse)
+    }
+  }, [term, id, socket])
+
+  // Run once on mount: create terminal if needed (skip when term exists, e.g. after panel move)
   useEffect(() => {
     if (!terminalContainerRef.current) return
-
-    // If terminal already exists (e.g., from a panel move), skip creation
-    if (term) {
-      return
-    }
+    if (term) return
 
     const terminal = new Terminal({
       cursorBlink: true,
@@ -88,18 +96,9 @@ export default function EditorTerminal({
       return true
     })
 
-    // Register terminalResponse before setTerm so we don't miss the initial prompt (same-window race)
-    const handleTerminalResponse = (response: { id: string; data: string }) => {
-      if (response.id === id) {
-        terminal.write(response.data)
-      }
-    }
-    socket.on("terminalResponse", handleTerminalResponse)
-
     setTerm(terminal)
 
     return () => {
-      socket.off("terminalResponse", handleTerminalResponse)
       terminalContainerRef.current?.removeEventListener(
         "contextmenu",
         handleContextMenu,
