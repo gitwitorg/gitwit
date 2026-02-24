@@ -89,6 +89,36 @@ export function Dock(_props: DockProps) {
     [dockRef, terminalRef],
   )
 
+  // Sync terminal tabs to dock panels. Run when terminals change or when either dock becomes ready (avoids refresh race).
+  const syncTerminalPanels = useCallback(() => {
+    if (terminals.length === 0) return
+    const ref = terminalRef.current
+    const dock = dockRef.current
+    if (!ref || !dock) return
+    terminals.forEach((term) => {
+      const id = `terminal-${term.id}`
+      if (!ref.getPanel(id) && !dock.getPanel(id)) {
+        ref.addPanel({
+          id,
+          component: "terminal",
+          title: "Shell",
+          tabComponent: "terminal",
+        })
+      }
+    })
+    const hasPanelsInTerminalDock = ref.panels.length > 0
+    const allInMainDock = terminals.every((t) => dock.getPanel(`terminal-${t.id}`) != null)
+    const terminalGridPanel = gridRef.current?.getPanel("terminal")
+    if (
+      terminalGridPanel &&
+      !terminalGridPanel.api.isVisible &&
+      hasPanelsInTerminalDock &&
+      !allInMainDock
+    ) {
+      terminalGridPanel.api.setVisible(true)
+    }
+  }, [terminals, gridRef, terminalRef, dockRef])
+
   // components
   const dockComponents: PanelCollection<IDockviewPanelProps> = {
     terminal: TerminalPanel,
@@ -110,8 +140,8 @@ export function Dock(_props: DockProps) {
           components={dockComponents}
           onReady={(event) => {
             dockRef.current = event.api
-            // Set up handler for external drag events (from file explorer)
             event.api.onUnhandledDragOverEvent(handleDockUnhandledDragOver)
+            syncTerminalPanels()
           }}
           onDidDrop={handleDockDidDrop}
         />
@@ -130,8 +160,8 @@ export function Dock(_props: DockProps) {
           rightHeaderActionsComponent={TerminalRightHeaderActions}
           onReady={(event) => {
             terminalRef.current = event.api
-            // Accept drags from dock to allow terminal panels back
             event.api.onUnhandledDragOverEvent(handleDockUnhandledDragOver)
+            syncTerminalPanels()
           }}
           onDidDrop={handleTerminalDidDrop}
         />
@@ -187,48 +217,9 @@ export function Dock(_props: DockProps) {
     return () => clearTimeout(t)
   }, [isSocketReady, terminals.length, creatingTerminal])
 
-  // When we have synced terminals (from another window), show terminal panel and add dock panels so tabs appear. Don't show the strip if all terminals are in the main dock (user moved them).
   useEffect(() => {
-    if (terminals.length === 0 || !gridRef.current) return
-    const ref = terminalRef.current
-    const dock = dockRef.current
-    const maybeShowTerminalStrip = () => {
-      const hasPanelsInTerminalDock = (terminalRef.current?.panels.length ?? 0) > 0
-      const allInMainDock = terminals.every(
-        (t) => dockRef.current?.getPanel(`terminal-${t.id}`) != null,
-      )
-      const terminalGridPanel = gridRef.current?.getPanel("terminal")
-      if (
-        terminalGridPanel &&
-        !terminalGridPanel.api.isVisible &&
-        hasPanelsInTerminalDock &&
-        !allInMainDock
-      ) {
-        terminalGridPanel.api.setVisible(true)
-      }
-    }
-    const addPanels = () => {
-      if (!ref || !dock) return
-      terminals.forEach((term) => {
-        const id = `terminal-${term.id}`
-        if (!ref.getPanel(id) && !dock.getPanel(id)) {
-          ref.addPanel({
-            id,
-            component: "terminal",
-            title: "Shell",
-            tabComponent: "terminal",
-          })
-        }
-      })
-      maybeShowTerminalStrip()
-    }
-    if (ref && dock) {
-      addPanels()
-    } else {
-      const t = setTimeout(addPanels, 150)
-      return () => clearTimeout(t)
-    }
-  }, [terminals, gridRef, terminalRef, dockRef])
+    syncTerminalPanels()
+  }, [syncTerminalPanels])
 
   // When a terminal is removed (e.g. terminalClosed from server), close its panel in both containers so tabs stay in sync
   useEffect(() => {
