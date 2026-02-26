@@ -16,24 +16,39 @@ export default function EditorTerminal({
   term,
   setTerm,
   visible,
+  isActive = false,
+  initialScreen,
 }: {
   socket: Socket
   id: string
   term: Terminal | null
   setTerm: (term: Terminal) => void
   visible: boolean
+  isActive?: boolean
+  initialScreen?: string
 }) {
   const { resolvedTheme: theme } = useTheme()
   const terminalContainerRef = useRef<ElementRef<"div">>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
+  const hasWrittenInitialScreenRef = useRef(false)
+  const fitAndNotifyRef = useRef<(() => void) | null>(null)
 
+  // Always listen for terminal output (needed for both new terminals and after panel move)
+  useEffect(() => {
+    if (!term) return
+    const handleTerminalResponse = (response: { id: string; data: string }) => {
+      if (response.id === id) term.write(response.data)
+    }
+    socket.on("terminalResponse", handleTerminalResponse)
+    return () => {
+      socket.off("terminalResponse", handleTerminalResponse)
+    }
+  }, [term, id, socket])
+
+  // Run once on mount: create terminal if needed (skip when term exists, e.g. after panel move)
   useEffect(() => {
     if (!terminalContainerRef.current) return
-
-    // If terminal already exists (e.g., from a panel move), skip creation
-    if (term) {
-      return
-    }
+    if (term) return
 
     const terminal = new Terminal({
       cursorBlink: true,
@@ -84,20 +99,23 @@ export default function EditorTerminal({
     setTerm(terminal)
 
     return () => {
-      // Don't dispose terminal on unmount - it may be reused after panel move
-      // Terminal disposal is handled explicitly in closeTerminal
       terminalContainerRef.current?.removeEventListener(
         "contextmenu",
         handleContextMenu,
       )
     }
-  }, [term])
+  }, [])
 
   useEffect(() => {
     if (term) {
       term.options.theme = theme === "light" ? lightTheme : darkTheme
     }
   }, [theme])
+
+  // When this terminal becomes the active panel, fit and send resize so server PTY matches
+  useEffect(() => {
+    if (isActive) fitAndNotifyRef.current?.()
+  }, [isActive])
 
   useEffect(() => {
     if (!term) return
@@ -109,6 +127,13 @@ export default function EditorTerminal({
       term.open(terminalContainerRef.current)
       fitAddon.fit()
       fitAddonRef.current = fitAddon
+      if (
+        initialScreen &&
+        !hasWrittenInitialScreenRef.current
+      ) {
+        term.write(initialScreen)
+        hasWrittenInitialScreenRef.current = true
+      }
     } else {
       // Terminal already opened - reattach to new container
       const terminalElement = term.element
@@ -118,10 +143,7 @@ export default function EditorTerminal({
       ) {
         // Move the terminal DOM element to the new container
         terminalContainerRef.current.appendChild(terminalElement)
-        // Refit after reattachment
-        setTimeout(() => {
-          fitAddonRef.current?.fit()
-        }, 10)
+        setTimeout(() => fitAndNotifyRef.current?.(), 10)
       }
     }
 
@@ -129,53 +151,43 @@ export default function EditorTerminal({
       socket.emit("terminalData", { id, data })
     })
 
-    const disposableOnResize = term.onResize((dimensions) => {
-      fitAddonRef.current?.fit()
-      socket.emit("terminalResize", { dimensions })
+    const fitAndNotify = () => {
+      if (!fitAddonRef.current) return
+      try {
+        fitAddonRef.current.fit()
+        notifyResizeDebounced()
+      } catch (err) {
+        console.error("Error during fit:", err)
+      }
+    }
+    const notifyResizeDebounced = debounce(() => {
+      socket.emit("resizeTerminal", {
+        id,
+        dimensions: { cols: term.cols, rows: term.rows },
+      })
+    }, 50)
+    const fitAndNotifyDebounced = debounce(fitAndNotify, 50)
+    fitAndNotifyRef.current = fitAndNotify
+
+    const disposableOnResize = term.onResize(() => notifyResizeDebounced())
+    const handleFocus = () => fitAndNotify()
+    const el = term.element
+    el?.addEventListener("focus", handleFocus)
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (fitAddonRef.current && terminalContainerRef.current)
+        fitAndNotifyDebounced()
     })
-    const resizeObserver = new ResizeObserver(
-      debounce((entries) => {
-        if (!fitAddonRef.current || !terminalContainerRef.current) return
-
-        const entry = entries[0]
-        if (!entry) return
-
-        const { width, height } = entry.contentRect
-
-        if (
-          width !== terminalContainerRef.current.offsetWidth ||
-          height !== terminalContainerRef.current.offsetHeight
-        ) {
-          try {
-            fitAddonRef.current.fit()
-          } catch (err) {
-            console.error("Error during fit:", err)
-          }
-        }
-      }, 50),
-    )
 
     resizeObserver.observe(terminalContainerRef.current)
     return () => {
+      fitAndNotifyRef.current = null
+      el?.removeEventListener("focus", handleFocus)
       disposableOnData.dispose()
       disposableOnResize.dispose()
       resizeObserver.disconnect()
     }
   }, [term, terminalContainerRef.current])
-
-  useEffect(() => {
-    if (!term) return
-    const handleTerminalResponse = (response: { id: string; data: string }) => {
-      if (response.id === id) {
-        term.write(response.data)
-      }
-    }
-    socket.on("terminalResponse", handleTerminalResponse)
-
-    return () => {
-      socket.off("terminalResponse", handleTerminalResponse)
-    }
-  }, [term, id, socket])
 
   return (
     <>

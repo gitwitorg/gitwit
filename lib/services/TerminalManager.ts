@@ -1,9 +1,12 @@
 import { Sandbox as Container } from "e2b"
 import { Terminal } from "./Terminal"
 
+const MAX_SCREEN_BUFFER_CHARS = 50_000
+
 export class TerminalManager {
   private container: Container
   private terminals: Record<string, Terminal> = {}
+  private screenBuffers: Record<string, string> = {}
 
   constructor(container: Container) {
     this.container = container
@@ -17,9 +20,22 @@ export class TerminalManager {
       return
     }
 
+    this.screenBuffers[id] = ""
+    const pushData = (responseString: string) => {
+      let buf = this.screenBuffers[id]
+      if (buf !== undefined) {
+        buf += responseString
+        if (buf.length > MAX_SCREEN_BUFFER_CHARS) {
+          buf = buf.slice(-MAX_SCREEN_BUFFER_CHARS)
+        }
+        this.screenBuffers[id] = buf
+      }
+      onData(responseString)
+    }
+
     this.terminals[id] = new Terminal(this.container)
     await this.terminals[id].init({
-      onData,
+      onData: pushData,
       cols: 80,
       rows: 20,
     })
@@ -37,13 +53,11 @@ export class TerminalManager {
     console.log("Created terminal", id)
   }
 
-  async resizeTerminal(dimensions: {
-    cols: number
-    rows: number
-  }): Promise<void> {
-    Object.values(this.terminals).forEach((t) => {
-      t.resize(dimensions)
-    })
+  async resizeTerminal(
+    id: string,
+    dimensions: { cols: number; rows: number },
+  ): Promise<void> {
+    this.terminals[id]?.resize(dimensions)
   }
 
   async sendTerminalData(id: string, data: string): Promise<void> {
@@ -61,6 +75,7 @@ export class TerminalManager {
 
     await this.terminals[id].close()
     delete this.terminals[id]
+    delete this.screenBuffers[id]
   }
 
   async closeAllTerminals(): Promise<void> {
@@ -68,7 +83,21 @@ export class TerminalManager {
       Object.entries(this.terminals).map(async ([key, terminal]) => {
         await terminal.close()
         delete this.terminals[key]
+        delete this.screenBuffers[key]
       }),
     )
+  }
+
+  getTerminalIds(): string[] {
+    return Object.keys(this.terminals)
+  }
+
+  getScreenBuffers(): Record<string, string> {
+    const out: Record<string, string> = {}
+    for (const id of Object.keys(this.terminals)) {
+      const buf = this.screenBuffers[id]
+      if (buf) out[id] = buf
+    }
+    return out
   }
 }

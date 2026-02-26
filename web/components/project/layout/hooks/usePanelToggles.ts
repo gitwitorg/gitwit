@@ -14,7 +14,7 @@ export function useToggleSidebar() {
 }
 
 export function useToggleTerminal() {
-  const { gridRef, terminalRef } = useEditor()
+  const { gridRef, terminalRef, dockRef } = useEditor()
   const { creatingTerminal, createNewTerminal } = useTerminal()
   const { isReady: isSocketReady } = useSocket()
 
@@ -26,12 +26,17 @@ export function useToggleTerminal() {
     panel.api.setVisible(!isVisible)
 
     if (!isVisible && isSocketReady) {
-      const existingTerminals = Boolean(terminalRef.current?.panels.length)
-      if (!existingTerminals && !creatingTerminal) {
+      const ref = terminalRef.current
+      const dock = dockRef.current
+      const existingInTerminal = ref?.panels.length ?? 0
+      const existingInDock = dock?.panels.filter((p) => p.id.startsWith("terminal-")).length ?? 0
+      if (existingInTerminal === 0 && existingInDock === 0 && !creatingTerminal) {
         createNewTerminal().then((id) => {
           if (!id) return
-          terminalRef.current?.addPanel({
-            id: `terminal-${id}`,
+          const panelId = `terminal-${id}`
+          if (ref?.getPanel(panelId) || dock?.getPanel(panelId)) return
+          ref?.addPanel({
+            id: panelId,
             component: "terminal",
             title: "Shell",
             tabComponent: "terminal",
@@ -39,7 +44,7 @@ export function useToggleTerminal() {
         })
       }
     }
-  }, [gridRef, terminalRef, isSocketReady, creatingTerminal, createNewTerminal])
+  }, [gridRef, terminalRef, dockRef, isSocketReady, creatingTerminal, createNewTerminal])
 }
 
 export function useToggleChat() {

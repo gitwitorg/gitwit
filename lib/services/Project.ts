@@ -21,8 +21,22 @@ export class Project {
   container: Container | null = null
   containerId: string | null = null
 
+  // Preview server state (one per project, synced across all clients)
+  previewURL: string | null = null
+  runTerminalId: string | null = null
+
   constructor(projectId: string) {
     this.projectId = projectId
+  }
+
+  setPreview(url: string, runTerminalId: string): void {
+    this.previewURL = url
+    this.runTerminalId = runTerminalId
+  }
+
+  clearPreview(): void {
+    this.previewURL = null
+    this.runTerminalId = null
   }
 
   /**
@@ -110,7 +124,6 @@ export class Project {
   }
 
   async connectToContainer(containerId: string): Promise<Container> {
-    console.log(`Connecting to container ${containerId}`)
     this.container = await Container.connect(containerId, {
       timeoutMs: CONTAINER_TIMEOUT,
       autoPause: true,
@@ -144,7 +157,6 @@ export class Project {
     // Initialize the terminal manager if it hasn't been set up yet
     if (!this.terminalManager) {
       this.terminalManager = new TerminalManager(container)
-      console.log(`Terminal manager set up for ${this.projectId}`)
     }
 
     // Initialize the file manager if it hasn't been set up yet
@@ -153,8 +165,10 @@ export class Project {
     }
   }
 
-  // Called when the client disconnects from the project
+  // Called when the last client disconnects from the project
   async disconnect() {
+    this.clearPreview()
+    await this.killDevServers()
     // Close all terminals managed by the terminal manager
     await this.terminalManager?.closeAllTerminals()
     // This way the terminal manager will be set up again if we reconnect

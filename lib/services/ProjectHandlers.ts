@@ -1,6 +1,18 @@
 import { Socket } from "socket.io"
+import { ConnectionManager } from "./ConnectionManager"
 import { LockManager } from "../utils/lock"
 import { Project } from "./Project"
+
+function broadcastToProject(
+  connections: ConnectionManager,
+  projectId: string,
+  event: string,
+  payload: unknown,
+) {
+  connections.connectionsForProject(projectId).forEach((s: Socket) => {
+    s.emit(event, payload)
+  })
+}
 
 type ServerContext = {
   dokkuClient: any | null
@@ -19,9 +31,11 @@ export const createProjectHandlers = (
   project: Project,
   connection: ConnectionInfo,
   context: ServerContext,
+  connections: ConnectionManager,
 ) => {
   const { dokkuClient, gitClient } = context
   const lockManager = new LockManager()
+  const projectId = project.projectId
 
   // Extract port number from a string
   function extractPortNumber(inputString: string): number | null {
@@ -93,33 +107,38 @@ export const createProjectHandlers = (
   }: {
     id: string
   }) => {
-    await lockManager.acquireLock(project.projectId, async () => {
+    await lockManager.acquireLock(projectId, async () => {
       await project.terminalManager?.createTerminal(
         id,
         (responseString: string) => {
-          connection.socket.emit("terminalResponse", {
+          broadcastToProject(connections, projectId, "terminalResponse", {
             id,
             data: responseString,
           })
           const port = extractPortNumber(responseString)
-          if (port) {
-            connection.socket.emit(
-              "previewURL",
-              "https://" + project.container?.getHost(port),
-            )
+          if (port && project.container && !project.previewURL) {
+            const url = "https://" + project.container.getHost(port)
+            project.setPreview(url, id)
+            broadcastToProject(connections, projectId, "previewState", {
+              url,
+              runTerminalId: id,
+            })
           }
         },
       )
+      broadcastToProject(connections, projectId, "terminalCreated", { id })
     })
   }
 
-  // Handle resizing a terminal
+  // Handle resizing a terminal (per-terminal dimensions)
   const handleResizeTerminal: SocketHandler = ({
+    id,
     dimensions,
   }: {
+    id: string
     dimensions: { cols: number; rows: number }
   }) => {
-    project.terminalManager?.resizeTerminal(dimensions)
+    project.terminalManager?.resizeTerminal(id, dimensions)
   }
 
   // Handle sending data to a terminal
@@ -134,8 +153,43 @@ export const createProjectHandlers = (
   }
 
   // Handle closing a terminal
-  const handleCloseTerminal: SocketHandler = ({ id }: { id: string }) => {
-    return project.terminalManager?.closeTerminal(id)
+  const handleCloseTerminal: SocketHandler = async ({ id }: { id: string }) => {
+    const wasRunTerminal = project.runTerminalId === id
+    await project.terminalManager?.closeTerminal(id)
+    broadcastToProject(connections, projectId, "terminalClosed", { id })
+    if (wasRunTerminal) {
+      project.clearPreview()
+      broadcastToProject(connections, projectId, "previewState", {
+        url: null,
+        runTerminalId: null,
+      })
+    }
+  }
+
+  // Send initial synced state to the requesting client (called when client receives "ready" to avoid race with listener setup)
+  const handleGetInitialState: SocketHandler = () => {
+    const ids = project.terminalManager?.getTerminalIds() ?? []
+    const screens =
+      project.terminalManager?.getScreenBuffers?.() ?? undefined
+    connection.socket.emit("terminalState", { ids, screens })
+    connection.socket.emit("previewState", {
+      url: project.previewURL,
+      runTerminalId: project.runTerminalId,
+    })
+  }
+
+  // Handle stopping the preview server (kills dev server, closes preview terminal)
+  const handleStopPreview: SocketHandler = async () => {
+    const runId = project.runTerminalId
+    if (!runId) return
+    await project.killDevServers()
+    await project.terminalManager?.closeTerminal(runId)
+    project.clearPreview()
+    broadcastToProject(connections, projectId, "terminalClosed", { id: runId })
+    broadcastToProject(connections, projectId, "previewState", {
+      url: null,
+      runTerminalId: null,
+    })
   }
 
   // Return all handlers as a map of event names to handler functions
@@ -148,5 +202,7 @@ export const createProjectHandlers = (
     resizeTerminal: handleResizeTerminal,
     terminalData: handleTerminalData,
     closeTerminal: handleCloseTerminal,
+    stopPreview: handleStopPreview,
+    getInitialState: handleGetInitialState,
   }
 }

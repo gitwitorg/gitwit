@@ -118,3 +118,7 @@ export const closeTerminal = ({
     })
   })
 }
+
+export const stopPreview = (socket: Socket): void => {
+  socket.emit("stopPreview")
+}

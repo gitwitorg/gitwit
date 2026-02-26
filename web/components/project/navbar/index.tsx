@@ -6,6 +6,7 @@ import UserButton from "@/components/ui/userButton"
 import { Pencil } from "lucide-react"
 import Link from "next/link"
 import { useState } from "react"
+import { useEditor } from "@/context/editor-context"
 import { useProjectContext } from "@/context/project-context"
 import DeployButtonModal from "./deploy"
 import DownloadButton from "./downloadButton"
@@ -20,8 +21,8 @@ export default function Navbar({
 }) {
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [isShareOpen, setIsShareOpen] = useState(false)
-  const [isRunning, setIsRunning] = useState(false)
   const { user, project } = useProjectContext()
+  const { previewURL } = useEditor()
   const isOwner = project.userId === user.id
 
   return (
@@ -58,8 +59,7 @@ export default function Navbar({
           </div>
         </div>
         <RunButtonModal
-          isRunning={isRunning}
-          setIsRunning={setIsRunning}
+          isRunning={!!previewURL}
           sandboxData={project}
         />
         <div className="flex items-center h-full space-x-4">

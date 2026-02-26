@@ -5,7 +5,7 @@ import { useTerminal } from "@/context/TerminalContext"
 import { Terminal } from "@xterm/xterm"
 import { IDockviewPanelProps } from "dockview"
 import { Loader2 } from "lucide-react"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import EditorTerminal from "../../terminals/terminal"
 
 export interface TerminalPanelParams {}
@@ -17,12 +17,20 @@ export function TerminalPanel(props: IDockviewPanelProps<TerminalPanelParams>) {
 
   const term = terminals.find((t) => t.id === terminalId)
 
+  const [isActive, setIsActive] = useState(() => props.api.isActive)
+  useEffect(() => {
+    const disposable = props.api.onDidActiveChange(() => {
+      setIsActive(props.api.isActive)
+    })
+    return () => disposable.dispose()
+  }, [props.api])
+
   // Auto-focus terminal when it becomes active
   useEffect(() => {
-    if (term) {
+    if (term && isActive) {
       term.terminal?.focus()
     }
-  }, [term])
+  }, [term, isActive])
 
   if (!term || !socket || !isReady) {
     return (
@@ -48,6 +56,8 @@ export function TerminalPanel(props: IDockviewPanelProps<TerminalPanelParams>) {
         )
       }}
       visible
+      isActive={isActive}
+      initialScreen={term.initialScreen}
     />
   )
 }

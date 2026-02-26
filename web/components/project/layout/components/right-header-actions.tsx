@@ -1,6 +1,7 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
+import { useEditor } from "@/context/editor-context"
 import { useSocket } from "@/context/SocketContext"
 import { useTerminal } from "@/context/TerminalContext"
 import { MAX_TERMINALS } from "@/lib/constants"
@@ -15,19 +16,17 @@ import { toast } from "sonner"
  */
 export function TerminalRightHeaderActions(props: IDockviewHeaderActionsProps) {
   const { group, containerApi } = props
+  const { dockRef } = useEditor()
   const { isReady: isSocketReady } = useSocket()
 
   const { createNewTerminal } = useTerminal()
   const [isCreating, setIsCreating] = useState(false)
 
   const handleAddTerminal = () => {
-    // Count existing terminal panels across all groups
-    const allTerminalPanels = containerApi.panels.filter((p) =>
-      p.id.startsWith("terminal-"),
-    )
-
-    // Check max terminals limit
-    if (allTerminalPanels.length >= MAX_TERMINALS) {
+    // Count existing terminal panels across this container and the dock (user may have moved some)
+    const here = containerApi.panels.filter((p) => p.id.startsWith("terminal-")).length
+    const inDock = dockRef.current?.panels.filter((p) => p.id.startsWith("terminal-")).length ?? 0
+    if (here + inDock >= MAX_TERMINALS) {
       toast.error("You reached the maximum # of terminals.")
       return
     }
@@ -35,10 +34,11 @@ export function TerminalRightHeaderActions(props: IDockviewHeaderActionsProps) {
     setIsCreating(true)
     createNewTerminal()
       .then((id) => {
-        // add terminal panel
-        group.panels.at(-1)
+        if (!id) return
+        const panelId = `terminal-${id}`
+        if (containerApi.getPanel(panelId) || dockRef.current?.getPanel(panelId)) return
         containerApi.addPanel({
-          id: `terminal-${id}`,
+          id: panelId,
           component: "terminal",
           title: "Shell",
           tabComponent: "terminal",

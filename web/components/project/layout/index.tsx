@@ -13,7 +13,7 @@ import {
   themeLight,
 } from "dockview"
 import { useTheme } from "next-themes"
-import { useCallback, useEffect, type FunctionComponent } from "react"
+import { useCallback, useEffect, useRef, type FunctionComponent } from "react"
 import { useEditorSocket } from "../hooks/useEditorSocket"
 import { ChatPanel } from "./components/chat-panel"
 import { EditorPanel } from "./components/editor-panel"
@@ -35,7 +35,9 @@ export function Dock(_props: DockProps) {
   const { resolvedTheme } = useTheme()
   const { gridRef, dockRef, terminalRef } = useEditor()
   const { isReady: isSocketReady } = useSocket()
-  const { creatingTerminal, createNewTerminal } = useTerminal()
+  const { terminals, creatingTerminal, createNewTerminal } = useTerminal()
+  const prevTerminalIdsRef = useRef<Set<string>>(new Set())
+  const hasAttemptedInitialCreateRef = useRef(false)
   const chatHandlers = useChatPanelHandlers()
 
   useEditorSocket()
@@ -60,13 +62,12 @@ export function Dock(_props: DockProps) {
       })
 
       if (result.handled) {
-        // If terminal container is now empty, hide the terminal grid panel
-        if (terminalRef.current?.panels.length === 0) {
-          const terminalGridPanel = gridRef.current?.getPanel("terminal")
-          if (terminalGridPanel) {
-            terminalGridPanel.api.setVisible(false)
+        // Terminal was moved from terminal dock to somewhere else → hide terminal dock when empty
+        queueMicrotask(() => {
+          if (terminalRef.current?.panels.length === 0) {
+            gridRef.current?.getPanel("terminal")?.api.setVisible(false)
           }
-        }
+        })
       }
     },
     [terminalRef, dockRef, gridRef],
@@ -87,6 +88,36 @@ export function Dock(_props: DockProps) {
     },
     [dockRef, terminalRef],
   )
+
+  // Sync terminal tabs to dock panels. Run when terminals change or when either dock becomes ready (avoids refresh race).
+  const syncTerminalPanels = useCallback(() => {
+    if (terminals.length === 0) return
+    const ref = terminalRef.current
+    const dock = dockRef.current
+    if (!ref || !dock) return
+    terminals.forEach((term) => {
+      const id = `terminal-${term.id}`
+      if (!ref.getPanel(id) && !dock.getPanel(id)) {
+        ref.addPanel({
+          id,
+          component: "terminal",
+          title: "Shell",
+          tabComponent: "terminal",
+        })
+      }
+    })
+    const hasPanelsInTerminalDock = ref.panels.length > 0
+    const allInMainDock = terminals.every((t) => dock.getPanel(`terminal-${t.id}`) != null)
+    const terminalGridPanel = gridRef.current?.getPanel("terminal")
+    if (
+      terminalGridPanel &&
+      !terminalGridPanel.api.isVisible &&
+      hasPanelsInTerminalDock &&
+      !allInMainDock
+    ) {
+      terminalGridPanel.api.setVisible(true)
+    }
+  }, [terminals, gridRef, terminalRef, dockRef])
 
   // components
   const dockComponents: PanelCollection<IDockviewPanelProps> = {
@@ -109,8 +140,8 @@ export function Dock(_props: DockProps) {
           components={dockComponents}
           onReady={(event) => {
             dockRef.current = event.api
-            // Set up handler for external drag events (from file explorer)
             event.api.onUnhandledDragOverEvent(handleDockUnhandledDragOver)
+            syncTerminalPanels()
           }}
           onDidDrop={handleDockDidDrop}
         />
@@ -129,8 +160,8 @@ export function Dock(_props: DockProps) {
           rightHeaderActionsComponent={TerminalRightHeaderActions}
           onReady={(event) => {
             terminalRef.current = event.api
-            // Accept drags from dock to allow terminal panels back
             event.api.onUnhandledDragOverEvent(handleDockUnhandledDragOver)
+            syncTerminalPanels()
           }}
           onDidDrop={handleTerminalDidDrop}
         />
@@ -161,25 +192,57 @@ export function Dock(_props: DockProps) {
     }
   }, [resolvedTheme, gridRef])
 
+  // Create one terminal on first load only if project has none (once per session; don't auto-create after user closes last tab)
   useEffect(() => {
-    if (!isSocketReady) return
-    // create terminal on load if none exist
-    if (!creatingTerminal && terminalRef.current) {
-      const existingTerminals = terminalRef.current.panels.length
-      if (existingTerminals === 0) {
-        createNewTerminal().then((id) => {
-          if (!id) return
-          // add terminal panel
-          terminalRef.current?.addPanel({
-            id: `terminal-${id}`,
-            component: "terminal",
-            title: "Shell",
-            tabComponent: "terminal",
-          })
+    if (!isSocketReady || hasAttemptedInitialCreateRef.current) return
+    const t = setTimeout(() => {
+      hasAttemptedInitialCreateRef.current = true
+      if (creatingTerminal || terminals.length > 0) return
+      if (!terminalRef.current) return
+      if (terminalRef.current.panels.length > 0) return
+      createNewTerminal().then((id) => {
+        if (!id) return
+        const ref = terminalRef.current
+        const dock = dockRef.current
+        const panelId = `terminal-${id}`
+        if (ref?.getPanel(panelId) || dock?.getPanel(panelId)) return
+        ref?.addPanel({
+          id: panelId,
+          component: "terminal",
+          title: "Shell",
+          tabComponent: "terminal",
         })
+      })
+    }, 400)
+    return () => clearTimeout(t)
+  }, [isSocketReady, terminals.length, creatingTerminal])
+
+  useEffect(() => {
+    syncTerminalPanels()
+  }, [syncTerminalPanels])
+
+  // When a terminal is removed (e.g. terminalClosed from server), close its panel in both containers so tabs stay in sync
+  useEffect(() => {
+    const ref = terminalRef.current
+    const dock = dockRef.current
+    if (!ref) return
+    const currentIds = new Set(terminals.map((t) => t.id))
+    prevTerminalIdsRef.current.forEach((id) => {
+      if (!currentIds.has(id)) {
+        const panelId = `terminal-${id}`
+        ref.getPanel(panelId)?.api.close()
+        dock?.getPanel(panelId)?.api.close()
+      }
+    })
+    prevTerminalIdsRef.current = currentIds
+    if (terminals.length === 0 && gridRef.current) {
+      const terminalGridPanel = gridRef.current.getPanel("terminal")
+      if (terminalGridPanel?.api.isVisible) {
+        terminalGridPanel.api.setVisible(false)
       }
     }
-  }, [isSocketReady])
+  }, [terminals, terminalRef, dockRef, gridRef])
+
   return (
     <div className="max-h-full overflow-hidden w-full h-full">
       <GridviewReact

@@ -43,7 +43,7 @@ interface EditorContextType {
   togglePreviewPanel: () => void
   toggleLayout: () => void
   toggleAIChat: () => void
-  loadPreviewURL: (url: string) => void
+  loadPreviewURL: (url: string | null) => void
   setIsAIChatOpen: React.Dispatch<React.SetStateAction<boolean>>
   setIsPreviewCollapsed: React.Dispatch<React.SetStateAction<boolean>>
   previewPanelRef: React.RefObject<ImperativePanelHandle>
@@ -104,8 +104,8 @@ export function EditorProvider({ children }: { children: ReactNode }) {
     }
   }, [isAIChatOpen, previousLayout])
 
-  const loadPreviewURL = useCallback((url: string) => {
-    setPreviewURL(url)
+  const loadPreviewURL = useCallback((url: string | null) => {
+    setPreviewURL(url ?? "")
   }, [])
 
   // Handler registry

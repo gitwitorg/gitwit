@@ -32,6 +32,8 @@ export const SocketProvider: React.FC<{
 
     newSocket.on("ready", () => {
       setIsReady(true)
+      // Defer so TerminalContext's useEffect can register listeners first
+      setTimeout(() => newSocket.emit("getInitialState"), 0)
     })
 
     newSocket.on("disconnect", () => {

@@ -5,44 +5,57 @@ import { toast } from "sonner"
 
 export const useEditorSocket = () => {
   const { socket } = useSocket()
-  const { dockRef } = useEditor()
+  const { dockRef, loadPreviewURL } = useEditor()
 
-  // Preview URL handler
-  const handlePreviewURL = useCallback((url: string) => {
-    const previewPanel = dockRef.current?.getPanel("preview")
-    if (previewPanel) {
-      previewPanel.api.updateParameters({ src: url })
-      previewPanel.api.setActive()
-      return
-    }
+  const openOrUpdatePreviewPanel = useCallback(
+    (url: string) => {
+      const previewPanel = dockRef.current?.getPanel("preview")
+      if (previewPanel) {
+        previewPanel.api.updateParameters({ src: url })
+        previewPanel.api.setActive()
+        return
+      }
 
-    const groups = dockRef.current?.groups
-    // If we have exactly one group, split to the right for the preview
-    // Otherwise open in default location
-    if (groups?.length === 1) {
-      dockRef.current?.addPanel({
-        id: "preview",
-        component: "preview",
-        title: "Preview",
-        tabComponent: "preview",
-        params: { src: url },
-        renderer: "always",
-        position: {
-          referenceGroup: groups[0].id,
-          direction: "right",
-        },
-      })
-    } else {
-      dockRef.current?.addPanel({
-        id: "preview",
-        component: "preview",
-        title: "Preview",
-        renderer: "always",
-        tabComponent: "preview",
-        params: { src: url },
-      })
-    }
-  }, [])
+      const groups = dockRef.current?.groups
+      if (groups?.length === 1) {
+        dockRef.current?.addPanel({
+          id: "preview",
+          component: "preview",
+          title: "Preview",
+          tabComponent: "preview",
+          params: { src: url },
+          renderer: "always",
+          position: {
+            referenceGroup: groups[0].id,
+            direction: "right",
+          },
+        })
+      } else {
+        dockRef.current?.addPanel({
+          id: "preview",
+          component: "preview",
+          title: "Preview",
+          renderer: "always",
+          tabComponent: "preview",
+          params: { src: url },
+        })
+      }
+    },
+    [dockRef],
+  )
+
+  const handlePreviewState = useCallback(
+    ({ url }: { url: string | null; runTerminalId: string | null }) => {
+      loadPreviewURL(url)
+      if (url) {
+        openOrUpdatePreviewPanel(url)
+      } else {
+        const previewPanel = dockRef.current?.getPanel("preview")
+        previewPanel?.api.close()
+      }
+    },
+    [loadPreviewURL, openOrUpdatePreviewPanel, dockRef],
+  )
 
   // Register socket event listeners
   useEffect(() => {
@@ -52,15 +65,14 @@ export const useEditorSocket = () => {
       toast.error(message)
     }
 
-    // Register events
     socket.on("error", onError)
-    socket.on("previewURL", handlePreviewURL)
+    socket.on("previewState", handlePreviewState)
 
     return () => {
       socket.off("error", onError)
-      socket.off("previewURL", handlePreviewURL)
+      socket.off("previewState", handlePreviewState)
     }
-  }, [socket, handlePreviewURL])
+  }, [socket, handlePreviewState])
 
   return {
     socket,

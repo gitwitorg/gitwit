@@ -40,7 +40,7 @@ export interface DecorationsState {
 
 export const useEditor = ({ projectId, fileId }: UseEditorProps) => {
   const { saveFile, fileTree: files = [] } = useFileTree()
-  const { terminalRef, gridRef } = useEditorContext()
+  const { terminalRef, dockRef, gridRef } = useEditorContext()
   const { creatingTerminal, createNewTerminal } = useTerminal()
   const draft = useAppStore((s) => s.drafts[fileId ?? ""])
   const { data: serverFileContent = "" } = fileRouter.fileContent.useQuery({
@@ -267,6 +267,7 @@ export const useEditor = ({ projectId, fileId }: UseEditorProps) => {
         monaco: editorRef,
         gridRef,
         terminalRef,
+        dockRef,
         isCreatingTerminal: creatingTerminal,
         createNewTerminal,
         saveFile: () => {
@@ -285,6 +286,7 @@ export const useEditor = ({ projectId, fileId }: UseEditorProps) => {
     saveFile,
     gridRef,
     terminalRef,
+    dockRef,
     draft,
     serverFileContent,
     creatingTerminal,
