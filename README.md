@@ -1,6 +1,6 @@
 # GitWit 📦🪄
 
-![Screenshot 2025-06-26 at 7 45 45 PM](https://github.com/user-attachments/assets/dbb5f9e9-1407-4e28-bc3f-14e2db0ef03d)
+<img width="2552" height="1422" alt="image" src="https://github.com/user-attachments/assets/64b42130-4986-4619-989b-0fd338ebabb3" />
 
 GitWit is an open-source cloud-based code editing environment with custom AI code generation, live preview, and AI chat.
 
